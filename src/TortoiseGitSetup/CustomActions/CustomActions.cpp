@@ -1,5 +1,6 @@
 // TortoiseGit - a Windows shell extension for easy version control
 
+// Copyright (C) 2011, 2012, 2015-2016 - TortoiseGit
 // Copyright (C) 2003-2008, 2012 - TortoiseSVN
 
 // This program is free software; you can redistribute it and/or
@@ -23,6 +24,7 @@
 */
 
 #include "stdafx.h"
+#include "resource.h"
 #include <shlwapi.h>
 #include <shellapi.h>
 #pragma comment(lib, "shlwapi")
@@ -71,5 +73,54 @@ UINT __stdcall OpenDonatePage(MSIHANDLE /*hModule*/)
 UINT __stdcall MsgBox(MSIHANDLE /*hModule*/)
 {
 	MessageBox(nullptr, _T("CustomAction \"MsgBox\" running"), _T("Installer"), MB_ICONINFORMATION);
+	return ERROR_SUCCESS;
+}
+
+UINT __stdcall RestartExplorer(MSIHANDLE /*hModule*/)
+{
+	HMODULE hModule = nullptr;
+	::GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCTSTR>(MsgBox), &hModule);
+
+	if (!hModule)
+		return ERROR_SUCCESS;
+
+	HRSRC hRestartExplorerRes = FindResource(hModule, MAKEINTRESOURCE(IDR_RESTARTEXPLORER), RT_RCDATA);
+	if (!hRestartExplorerRes)
+		return ERROR_SUCCESS;
+
+	HGLOBAL hRestartExplorerGlobal = LoadResource(hModule, hRestartExplorerRes);
+	if (!hRestartExplorerGlobal)
+		return ERROR_SUCCESS;
+
+	TCHAR szTempPath[MAX_PATH];
+	if (!GetTempPath(_countof(szTempPath) - 15, szTempPath))
+		return ERROR_SUCCESS;
+
+	TCHAR szTempFileName[MAX_PATH + 1];
+	if (!GetTempFileName(szTempPath, L"REx", 0, szTempFileName))
+		return ERROR_SUCCESS;
+
+	size_t len = wcsnlen_s(szTempFileName, _countof(szTempPath));
+	if (len < 14)
+		return  ERROR_SUCCESS;
+	szTempFileName[len - 3] = L'e';
+	szTempFileName[len - 2] = L'x';
+	szTempFileName[len - 1] = L'e';
+
+	HANDLE hFile = CreateFile(szTempFileName, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (hFile == INVALID_HANDLE_VALUE)
+		return ERROR_SUCCESS;
+
+	DWORD written = 0;
+	if (!WriteFile(hFile, LockResource(hRestartExplorerGlobal), SizeofResource(hModule, hRestartExplorerRes), &written, nullptr) || written != SizeofResource(hModule, hRestartExplorerRes))
+	{
+		CloseHandle(hFile);
+		return ERROR_SUCCESS;
+	}
+
+	CloseHandle(hFile);
+
+	ShellExecute(nullptr, L"open", szTempFileName, nullptr, nullptr, SW_HIDE);
+
 	return ERROR_SUCCESS;
 }
